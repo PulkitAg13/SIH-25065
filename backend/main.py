@@ -251,9 +251,13 @@ def calculate_potential(request: schemas.CalculateRequest):
     """Calculate water harvesting potential"""
     try:
         # Calculate harvestable water
-        runoff_coefficients = {'Concrete': 0.8, 'Tiled': 0.7, 'Metal': 0.9, 'Asbestos': 0.8, 'Thatched': 0.6}
-        runoff_coeff = runoff_coefficients.get(request.roof_type, 0.7)
-        harvestable_water = request.roof_area * request.rainfall * runoff_coeff / 1000
+        runoff_coeff = ml_service.predict_runoff_coefficient(
+            request.roof_type, request.roof_age, request.region
+        )
+        
+        harvestable_water = ml_service.predict_water_harvest(
+            request.open_space, runoff_coeff, request.annual_rainfall, request.roof_type
+        )
         
         # Calculate water demand
         daily_water_demand = request.dwellers * 100  # 100 liters per person per day
@@ -290,18 +294,20 @@ def get_recommendations(request: schemas.RecommendationRequest):
         
         # For now, create a simple recommendation item
         # In a real implementation, you'd have more detailed recommendations
-        recommendation_item = schemas.RecommendationItem(
-            name=recommended_structure,
-            description=f"Recommended {recommended_structure} based on your site conditions",
-            cost=f"₹{25000 + request.roof_area * 100}"  # Example cost calculation
+        cost_benefit = ml_service.predict_cost_benefit(
+            recommended_structure, request.roof_area, request.region
         )
-        
+        recommendation_item = cost_benefit["installation_cost"]
         # Simple cost-benefit analysis
         water_savings = request.roof_area * request.rainfall * 0.8
         water_cost = 5  # ₹ per liter (assuming cost of alternative water)
         annual_savings = water_savings * water_cost / 1000
-        avg_cost = 25000 + request.roof_area * 100  # Average installation cost
-        payback_period = avg_cost / annual_savings if annual_savings > 0 else 0
+        avg_cost = cost_benefit["installation_cost"]
+
+        cost_benefit = ml_service.predict_cost_benefit(
+            recommended_structure, request.roof_area, request.region
+        )
+        payback_period = cost_benefit["payback_period"]
         
         cost_benefit_analysis = {
             "annual_water_savings": water_savings,
